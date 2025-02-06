@@ -1,0 +1,47 @@
+name = "My Contract"
+version = "0.0.1"
+
+[text]
+url = "https://github.com/myorg/myrepotext/index.html"
+
+[source]
+url = "https://github.com/myorg/myrepo"
+branch = "main"
+path = "contract.json"
+
+[policy]
+branch = "main"
+directory = "/policies"
+url = "https://github.com/myorg/myrepo"
+
+[state]
+initial = "Draft"
+url = "https://github.com/myorg/myrepo"
+
+[[state.states]]
+name = "Draft"
+
+[state.states.entry]
+type = ""
+arguments = {}
+
+[state.states.exit]
+type = ""
+arguments = {}
+
+[state.states.variables]
+
+[[state.states.transitions]]
+name = "Signing"
+to = "In Process"
+on = "com.decombine.signature.sign"
+
+[[state.states.transitions.conditions]]
+name = "data.signature.validated"
+value = "true"
+
+[[state.states.transitions]]
+name = "Expired"
+to = "Expired"
+on = "com.decombine.contract.expirationReached"
+conditions = []

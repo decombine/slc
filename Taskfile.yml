@@ -1,0 +1,15 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  GREETING: Hello, World!
+
+tasks:
+
+  check:
+    cmds:
+      - pre-commit run --all-files
+      - go mod tidy
+      - go vet ./...
+      - go test ./...

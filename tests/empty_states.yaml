@@ -1,0 +1,17 @@
+name: "My Contract"
+version: "0.0.1"
+text:
+  url: "https://github.com/myorg/myrepotext/index.html"
+source:
+  url: "https://github.com/myorg/myrepo"
+  branch: "main"
+  path: "contract.json"
+policy:
+  branch: "main"
+  directory: "/policies"
+  url: "https://github.com/myorg/myrepo"
+state:
+  initial: "Nonexistent"
+  url: "https://github.com/myorg/myrepo"
+  states: []
+status: {}
