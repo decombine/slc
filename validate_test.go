@@ -2,11 +2,13 @@ package slc
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"testing"
+
 	"github.com/BurntSushi/toml"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-yaml"
-	"os"
-	"testing"
 )
 
 type tt struct {
@@ -184,6 +186,38 @@ func TestValidateTOMLPayload(t *testing.T) {
 				t.Fatalf("unexpected error: %s", err)
 			}
 		})
+	}
+}
+
+func TestValidateRepository(t *testing.T) {
+	type tests struct {
+		shouldErr bool
+		token     string
+		uri       string
+		branch    string
+		path      string
+	}
+
+	testCases := []tests{
+		{
+			shouldErr: true,
+			token:     "",
+			uri:       "https://github.com/decombine/notaccesible",
+			branch:    "main",
+			path:      "contract.json",
+		},
+		// TODO: Add test case after adding new public SLC repository.
+	}
+
+	for _, tc := range testCases {
+		ctx := context.Background()
+		_, err := ValidateRepository(ctx, tc.token, tc.uri, tc.branch, tc.path)
+		if err != nil {
+			if tc.shouldErr {
+				continue
+			}
+			t.Fatal(err)
+		}
 	}
 }
 

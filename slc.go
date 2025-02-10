@@ -2,6 +2,7 @@ package slc
 
 import (
 	"errors"
+
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 )
 

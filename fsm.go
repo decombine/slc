@@ -2,6 +2,7 @@ package slc
 
 import (
 	"errors"
+
 	"github.com/qmuntal/stateless"
 )
 

@@ -8,6 +8,7 @@ require (
 	github.com/fluxcd/kustomize-controller/api v1.4.0
 	github.com/go-playground/validator/v10 v10.24.0
 	github.com/goccy/go-yaml v1.15.16
+	github.com/google/go-github/v69 v69.0.0
 	github.com/qmuntal/stateless v1.7.1
 )
 
@@ -20,6 +21,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

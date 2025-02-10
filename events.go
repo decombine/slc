@@ -2,6 +2,7 @@ package slc
 
 import (
 	"errors"
+
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/qmuntal/stateless"
 )
