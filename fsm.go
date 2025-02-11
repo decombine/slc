@@ -1,8 +1,11 @@
 package slc
 
 import (
+	"context"
 	"errors"
+	"strings"
 
+	"github.com/open-policy-agent/opa/v1/rego"
 	"github.com/qmuntal/stateless"
 )
 
@@ -51,7 +54,17 @@ func NewStateMachine(current string, c *Contract) (*stateless.StateMachine, erro
 				if states[t].Name != currentState {
 					continue
 				}
-				tree.Configure(currentState).Permit(states[t].Transitions[i].On, states[t].Transitions[i].To)
+
+				var guards []stateless.GuardFunc
+				for j := 0; j < len(states[t].Transitions[i].Conditions); j++ {
+					if strings.HasPrefix("rego", states[t].Transitions[i].Conditions[j].Name) {
+						guards = append(guards, func(_ context.Context, _ ...any) bool {
+							return includeConditions(context.Background(), states[t].Transitions[i].Conditions[j])
+						})
+					}
+				}
+
+				tree.Configure(currentState).Permit(states[t].Transitions[i].On, states[t].Transitions[i].To, guards...)
 				if !visited[states[t].Name] {
 					queue = append(queue, states[t].Name)
 				}
@@ -61,6 +74,27 @@ func NewStateMachine(current string, c *Contract) (*stateless.StateMachine, erro
 	}
 
 	return tree, nil
+}
+
+func includeConditions(ctx context.Context, conditions ...Condition) bool {
+	for _, condition := range conditions {
+		if strings.HasPrefix("rego", condition.Name) {
+			return regoCondition(ctx, condition)
+		}
+	}
+	return false
+}
+
+func regoCondition(ctx context.Context, condition Condition) bool {
+	policy := rego.New(
+		rego.Query(condition.Name),
+		rego.Input(condition.Value),
+	)
+	res, err := policy.Eval(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return res.Allowed()
 }
 
 // StateTransitionValidator evaluates a State Machine and a possible transition
