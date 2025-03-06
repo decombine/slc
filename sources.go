@@ -84,13 +84,14 @@ func NewGitHubClient(token string) *gogithub.Client {
 
 	if token == "" {
 		c := gogithub.NewClient(&http.Client{
-			Timeout: 15 * time.Second,
+			// A default timeout so the client doesn't hang indefinitely
+			Timeout: 10 * time.Second,
 		})
 		return c
 	}
 
 	c := gogithub.NewClient(&http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: 10 * time.Second,
 	}).WithAuthToken(token)
 	return c
 }

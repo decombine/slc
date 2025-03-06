@@ -51,13 +51,17 @@ type ContractText struct {
 	URL string `json:"url" yaml:"url" toml:"url" validate:"required,url"`
 }
 
-// Condition is a value that must be satisfied (true) in
-// order for a transition or action to occur.
+// Condition is used to apply a Policy to a Smart Legal Contract State Transition.
+// A Policy may include Open Policy Agent (OPA) Rego logic.
 type Condition struct {
-	// The condition that must be satisfied for the guard to be true
+	// Name of the Condition.
 	Name string `json:"name" yaml:"name" toml:"name"`
-	// The value that the condition must be in order for the guard to be true
+	// Value of the Condition. This may be used to represent a specific policy query.
+	// E.g., "data.policy.allow"
 	Value string `json:"value" yaml:"value" toml:"value"`
+	// Path to the Condition logic. E.g., "./service/condition.rego"
+	// Path is relative to the PolicySource.Directory.
+	Path string `json:"path" yaml:"path" toml:"path"`
 }
 
 // A GitSource is a Git repository source for Smart Legal Contracts.
