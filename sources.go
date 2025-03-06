@@ -13,6 +13,15 @@ import (
 	gogithub "github.com/google/go-github/v69/github"
 )
 
+const (
+	// JSON is the JSON file format.
+	JSON = "json"
+	// YAML is the YAML file format.
+	YAML = "yaml"
+	// TOML is the TOML file format.
+	TOML = "toml"
+)
+
 func GetFSContract(path string) (*Contract, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -28,11 +37,11 @@ func GetFSContract(path string) (*Contract, error) {
 	}
 	f.Close()
 	switch getFileType(n) {
-	case "json":
+	case JSON:
 		return ValidateJSONPayload(input)
-	case "yaml":
+	case YAML:
 		return ValidateYAMLPayload(input)
-	case "toml":
+	case TOML:
 		return ValidateTOMLPayload(input)
 	}
 	return nil, errors.New("unknown or unsupported file format")
@@ -70,11 +79,11 @@ func GetGitHubContract(token, uri, branch, path string) (*Contract, error) {
 
 	input := []byte(con)
 	switch getFileType(path) {
-	case "json":
+	case JSON:
 		return ValidateJSONPayload(input)
-	case "yaml":
+	case YAML:
 		return ValidateYAMLPayload(input)
-	case "toml":
+	case TOML:
 		return ValidateTOMLPayload(input)
 	}
 	return nil, errors.New("unknown or unsupported file format")
@@ -98,11 +107,11 @@ func NewGitHubClient(token string) *gogithub.Client {
 
 func getFileType(path string) string {
 	if strings.HasSuffix(path, ".json") {
-		return "json"
+		return JSON
 	} else if strings.HasSuffix(path, ".yaml") {
-		return "yaml"
+		return YAML
 	} else if strings.HasSuffix(path, ".toml") {
-		return "toml"
+		return TOML
 	}
 	return ""
 }

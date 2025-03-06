@@ -11,6 +11,8 @@ import (
 )
 
 // getPolicyDirectory downloads a directory of OPA Rego policy files from a GitHub repository.
+//
+//nolint:unused
 func getPolicyDirectory(uri, branch, token string) (map[string][]byte, error) {
 	ctx := context.Background()
 	c := NewGitHubClient(token)

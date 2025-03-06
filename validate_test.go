@@ -30,7 +30,7 @@ type TOMLTestCase struct {
 }
 
 // TODO: Add support for loading multiple cases.
-//func loadCases(t *testing.T, path string) []TestCase {
+// func loadCases(t *testing.T, path string) []TestCase {
 //	file, err := os.Open(path)
 //	if err != nil {
 //		t.Fatal(err)
@@ -42,7 +42,7 @@ type TOMLTestCase struct {
 //		t.Fatal(err)
 //	}
 //	return tcs
-//}
+// }
 
 func loadCase(t *testing.T, path string) TestCase {
 	file, err := os.Open(path)
@@ -81,7 +81,6 @@ func TestValidateJSONPayload(t *testing.T) {
 			input: []byte(`{"name":"test","version":"0.0.1","text":{"url":"https://example.com"},"source":{"url":"https://example.com"},"policy":{"url":"https://example.com"}}`),
 			expected: []string{
 				`Key: 'Contract.State' Error:Field validation for 'State' failed on the 'required' tag`,
-				//`Key: 'Contract.State.URL' Error:Field validation for 'URL' failed on the 'required' tag`,
 			},
 		},
 		{
