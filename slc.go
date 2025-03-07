@@ -26,6 +26,8 @@ type Contract struct {
 	Policy PolicySource `json:"policy" yaml:"policy" toml:"policy"`
 	// The StateConfiguration of the SLC used to dictate a State Machine.
 	State StateConfiguration `json:"state" yaml:"state" toml:"state" validate:"required"`
+	// The Network of the SLC
+	Network Network `json:"network,omitempty" yaml:"network,omitempty" toml:"network,omitempty"`
 	// Status of the SLC. Typically used by the runtime operating the SLC.
 	Status Status `json:"status,omitempty" yaml:"status,omitempty" toml:"status,omitempty"`
 }
@@ -33,17 +35,19 @@ type Contract struct {
 // Network provides a reference for remote authentication, authorization, and state management.
 type Network struct {
 	// The Name of the Network. E.g., "decombine"
-	Name string `json:"name" yaml:"name" toml:"name" validate:"required"`
+	Name string `json:"name" yaml:"name" toml:"name" `
 	// The API hostname address of the Network. E.g., "api.decombine.com"
-	API string `json:"api" yaml:"api" toml:"api" validate:"required"`
+	API string `json:"api" yaml:"api" toml:"api" `
 	// The URL of the Network for informational purposes. E.g., "https://decombine.com"
-	URL string `json:"url" yaml:"url" toml:"url" validate:"required"`
+	URL string `json:"url" yaml:"url" toml:"url"`
+	// EventURL is the URL of the Event Stream.
+	EventURL string `json:"eventUrl" yaml:"eventUrl" toml:"eventUrl"`
 	// The ClientID of the Network used for OIDC.
-	ClientID string `json:"clientId" yaml:"clientId" tom:"clientId" validate:"required"`
+	ClientID string `json:"clientId" yaml:"clientId" tom:"clientId" `
 	// The Relying Party (RP) Issuer used for OIDC.
-	Issuer string `json:"issuer" yaml:"issuer" toml:"issuer" validate:"required"`
+	Issuer string `json:"issuer" yaml:"issuer" toml:"issuer"`
 	// The DiscoveryEndpoint used for OIDC.
-	DiscoveryEndpoint string `json:"discoveryEndpoint" yaml:"discoveryEndpoint" toml:"discoveryEndpoint" validate:"required"`
+	DiscoveryEndpoint string `json:"discoveryEndpoint" yaml:"discoveryEndpoint" toml:"discoveryEndpoint"`
 }
 
 type ContractText struct {
@@ -87,7 +91,7 @@ type PolicySource struct {
 }
 
 // A State is a condition of being. It represents a snapshot of the current
-// condition of a smart legal contract.
+// condition of a Smart Legal Contract.
 type State struct {
 	// The name of the State
 	Name string `json:"name" yaml:"name" toml:"name"`

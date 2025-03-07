@@ -1,24 +1,35 @@
 package slc
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/qmuntal/stateless"
+	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go/jetstream"
 )
 
 const (
 	CloudEventsVersion = "1.0"
+	StrictHeaders      = false
 )
 
 // CreateEvent creates a new Event with the given type.
-func (c *Contract) CreateEvent(eventType string) (cloudevents.Event, error) {
+func (c *Contract) CreateEvent(eventType, source string) (cloudevents.Event, error) {
 	if eventType == "" {
 		return cloudevents.Event{}, errors.New("event type cannot be empty")
 	}
 	ev := cloudevents.NewEvent()
 	ev.SetSpecVersion(CloudEventsVersion)
 	ev.SetType(eventType)
+	ev.SetID(uuid.New().String())
+	ev.SetTime(time.Now())
+	ev.SetSource(source)
 	return ev, nil
 }
 
@@ -46,30 +57,69 @@ func (c *Contract) IsEventRegistered(event cloudevents.Event) bool {
 	return false
 }
 
-// ConsumeEvent consumes an Event and transitions the Contract FSM to the next State.
-func (c *Contract) ConsumeEvent(event cloudevents.Event, fsm *stateless.StateMachine) error {
-	if !c.IsEventRegistered(event) {
-		return errors.New("event not registered in a contract transition")
-	}
-	// Find the Transition
-	for _, s := range c.State.States {
-		for _, t := range s.Transitions {
-			if t.On == event.Type() {
-				permitted, err := fsm.PermittedTriggers()
-				if err != nil {
-					return err
-				}
-				for _, p := range permitted {
-					if p == t.On {
-						// Transition to the next state
-						err = fsm.Fire(t.On)
-						if err != nil {
-							return err
-						}
-					}
-				}
+// ConsumeEvent consumes an Event and initiates State Transition if the Event is relevant.
+func (r *Reconciler) ConsumeEvent(ctx context.Context, event *cloudevents.Event, eligible []Transition) error {
+	for _, t := range eligible {
+		if t.On == "" {
+			// No event to process
+			continue
+		}
+		if t.On == event.Type() {
+			log.Printf("Event %s triggers transition to %s", event.Type(), t.To)
+			input := TransitionCtx{Input: string(event.Data())}
+			tCtx := NewTransitionContext(ctx, &input)
+			fire := r.FSM.FireCtx(tCtx, t.On, &input)
+			if fire != nil {
+				log.Printf("Transition failed with error: %v", fire.Error())
+			} else {
+				log.Printf("Transition successful")
+				r.FSM.OnTransitioning()
 			}
 		}
 	}
 	return nil
+}
+
+func jetstreamToCloudEvent(m jetstream.Msg) (*cloudevents.Event, error) {
+	ev := &event.Event{}
+	// Attempt to unmarshal the data into a CloudEvent
+	err := json.Unmarshal(m.Data(), ev)
+	if err == nil {
+		// Data is already a CloudEvent
+		return ev, nil
+	}
+	if ev.Type() != "" {
+		return ev, nil
+	}
+
+	// TODO: Review specification for options around encoding. Update handling appropriately.
+	newEv := cloudevents.NewEvent()
+	err = newEv.SetData(cloudevents.ApplicationJSON, m.Data())
+	if err != nil {
+		return nil, fmt.Errorf("failed to set cloudevent payload from JetStream message")
+	}
+
+	// TODO: Clarify time format in specification.
+	t, err := time.Parse(time.RFC3339, m.Headers().Get("time"))
+	if err != nil {
+		if StrictHeaders {
+			return nil, fmt.Errorf("failed to parse time header")
+		}
+		t = time.Now()
+	}
+	newEv.SetTime(t)
+	newEv.SetID(m.Headers().Get("id"))
+
+	if newEv.ID() == "" {
+		if StrictHeaders {
+			return nil, fmt.Errorf("failed to parse id header")
+		}
+		id := uuid.New().String()
+		newEv.SetID(id)
+	}
+
+	newEv.SetSpecVersion(CloudEventsVersion)
+	newEv.SetDataContentType(cloudevents.ApplicationJSON)
+
+	return &newEv, nil
 }
