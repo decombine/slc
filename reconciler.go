@@ -77,7 +77,10 @@ func (r *Reconciler) Start(ctx context.Context) error {
 
 	if r.Client != nil {
 		log.Printf("Smart Legal Contract connected to Kubernetes API. Synchronizing any Entry workloads.")
-		err = r.reconcileAction(ctx, state.Entry)
+		err := r.reconcileAction(ctx, state.Entry)
+		if err != nil {
+			return fmt.Errorf("failed to reconcile entry actions: %w", err)
+		}
 	}
 
 	// Register a cloudevent to be published to the Stream when transitioning
