@@ -27,8 +27,9 @@ state:
           to: "In Process"
           on: "com.decombine.signature.sign"
           conditions:
-            - name: "data.signature.validated"
-              value: "true"
+            - name: "rego.data.signature.validated"
+              value: "data.only.admin.allow"
+              path: "only.admin.rego"
         - name: "Expired"
           to: "Expired"
           on: "com.decombine.contract.expirationReached"

@@ -1,12 +1,16 @@
 package slc
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+
 	"github.com/BurntSushi/toml"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-yaml"
+	gogithub "github.com/google/go-github/v69/github"
 )
 
 var validate *validator.Validate
@@ -62,4 +66,37 @@ func ValidateTOMLPayload(in []byte) (*Contract, error) {
 		return nil, err
 	}
 	return &c, nil
+}
+
+// ValidateRepository accepts a GitSource and validates the target
+// repository exists, is accessible, and at minimum a contract.json.
+func ValidateRepository(ctx context.Context, token, uri, branch, path string) (string, error) {
+
+	c := NewGitHubClient(token)
+	owner, repo, err := parseGitHubURL(uri)
+	if err != nil {
+		return "", err
+	}
+	opts := &gogithub.RepositoryContentGetOptions{
+		Ref: branch,
+	}
+	content, _, resp, err := c.Repositories.GetContents(ctx, owner, repo, path, opts)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", err
+	}
+
+	if content == nil {
+		return "", err
+	}
+
+	con, err := content.GetContent()
+	if err != nil {
+		return "", err
+	}
+
+	return con, nil
 }

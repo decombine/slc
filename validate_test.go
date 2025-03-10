@@ -2,11 +2,13 @@ package slc
 
 import (
 	"bytes"
+	"context"
+	"os"
+	"testing"
+
 	"github.com/BurntSushi/toml"
 	"github.com/go-playground/validator/v10"
 	"github.com/goccy/go-yaml"
-	"os"
-	"testing"
 )
 
 type tt struct {
@@ -28,7 +30,7 @@ type TOMLTestCase struct {
 }
 
 // TODO: Add support for loading multiple cases.
-//func loadCases(t *testing.T, path string) []TestCase {
+// func loadCases(t *testing.T, path string) []TestCase {
 //	file, err := os.Open(path)
 //	if err != nil {
 //		t.Fatal(err)
@@ -40,7 +42,7 @@ type TOMLTestCase struct {
 //		t.Fatal(err)
 //	}
 //	return tcs
-//}
+// }
 
 func loadCase(t *testing.T, path string) TestCase {
 	file, err := os.Open(path)
@@ -79,7 +81,6 @@ func TestValidateJSONPayload(t *testing.T) {
 			input: []byte(`{"name":"test","version":"0.0.1","text":{"url":"https://example.com"},"source":{"url":"https://example.com"},"policy":{"url":"https://example.com"}}`),
 			expected: []string{
 				`Key: 'Contract.State' Error:Field validation for 'State' failed on the 'required' tag`,
-				//`Key: 'Contract.State.URL' Error:Field validation for 'URL' failed on the 'required' tag`,
 			},
 		},
 		{
@@ -184,6 +185,38 @@ func TestValidateTOMLPayload(t *testing.T) {
 				t.Fatalf("unexpected error: %s", err)
 			}
 		})
+	}
+}
+
+func TestValidateRepository(t *testing.T) {
+	type tests struct {
+		shouldErr bool
+		token     string
+		uri       string
+		branch    string
+		path      string
+	}
+
+	testCases := []tests{
+		{
+			shouldErr: true,
+			token:     "",
+			uri:       "https://github.com/decombine/notaccesible",
+			branch:    "main",
+			path:      "contract.json",
+		},
+		// TODO: Add test case after adding new public SLC repository.
+	}
+
+	for _, tc := range testCases {
+		ctx := context.Background()
+		_, err := ValidateRepository(ctx, tc.token, tc.uri, tc.branch, tc.path)
+		if err != nil {
+			if tc.shouldErr {
+				continue
+			}
+			t.Fatal(err)
+		}
 	}
 }
 
