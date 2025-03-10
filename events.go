@@ -59,9 +59,12 @@ func (c *Contract) IsEventRegistered(event cloudevents.Event) bool {
 
 // ConsumeEvent consumes an Event and initiates State Transition if the Event is relevant.
 func (r *Reconciler) ConsumeEvent(ctx context.Context, event *cloudevents.Event, eligible []Transition) error {
+	state, _ := r.getState(ctx)
+
 	for _, t := range eligible {
 		if t.On == "" {
 			// No event to process
+			log.Printf("Event does not trigger a transition")
 			continue
 		}
 		if t.On == event.Type() {
@@ -73,8 +76,18 @@ func (r *Reconciler) ConsumeEvent(ctx context.Context, event *cloudevents.Event,
 				log.Printf("Transition failed with error: %v", fire.Error())
 			} else {
 				log.Printf("Transition successful")
+
+				if r.Client != nil {
+					err := r.checkForExitActions(ctx, state)
+					if err != nil {
+						log.Printf("Error checking for Exit Actions: %v", err)
+					}
+				}
+
 				r.FSM.OnTransitioning()
 			}
+		} else {
+			log.Printf("Event %s does not trigger a transition", event.Type())
 		}
 	}
 	return nil

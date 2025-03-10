@@ -6,8 +6,13 @@ import (
 	"log"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/qmuntal/stateless"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ReconcilerConfig struct {
@@ -22,16 +27,37 @@ type Reconciler struct {
 	Stream       jetstream.JetStream
 	Contract     *Contract
 	FSM          *stateless.StateMachine
+	Client       client.Client
 }
 
-func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.Consumer, stream jetstream.JetStream, config ReconcilerConfig) *Reconciler {
-	return &Reconciler{
-		Config:   config,
-		Consumer: consumer,
-		Stream:   stream,
-		Contract: c,
-		FSM:      fsm,
+type ReconcilerOptions struct {
+	client client.Client
+}
+
+func WithKubernetesClient(client client.Client) ReconcilerOptions {
+	return ReconcilerOptions{
+		client: client,
 	}
+}
+
+func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.Consumer, stream jetstream.JetStream,
+	config ReconcilerConfig, options ...ReconcilerOptions) *Reconciler {
+
+	var r Reconciler
+
+	for _, o := range options {
+		if o.client != nil {
+			r.Client = o.client
+		}
+	}
+
+	r.Contract = c
+	r.FSM = fsm
+	r.Consumer = consumer
+	r.Stream = stream
+	r.Config = config
+
+	return &r
 }
 
 func (r *Reconciler) Start(ctx context.Context) error {
@@ -47,6 +73,11 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	eligible, err := r.eligibleTransitions(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get eligible transitions: %w", err)
+	}
+
+	if r.Client != nil {
+		log.Printf("Smart Legal Contract connected to Kubernetes API. Synchronizing any Entry workloads.")
+		err = r.reconcileAction(ctx, state.Entry)
 	}
 
 	// Register a cloudevent to be published to the Stream when transitioning
@@ -88,10 +119,6 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	}
 }
 
-func (r *Reconciler) Publish(context.Context, stateless.Transition) {
-
-}
-
 // run is a blocking function that listens for incoming messages from the JetStream Consumer.
 func (r *Reconciler) run() error {
 	iter, _ := r.Consumer.Messages(jetstream.PullMaxMessages(r.Config.MaxMassages))
@@ -112,6 +139,46 @@ func (r *Reconciler) run() error {
 			_ = msg.Ack()
 		}()
 	}
+}
+
+// runAction executes an Action triggered by a State Entry or Exit.
+func (r *Reconciler) reconcileAction(ctx context.Context, action Action) error {
+	if action.KubernetesActions != nil {
+		for _, ka := range action.KubernetesActions {
+			if ka.KustomizationSpec != nil {
+				k := &kustomizev1.Kustomization{
+					ObjectMeta: ctrl.ObjectMeta{
+						Name:      ka.Name,
+						Namespace: ka.Namespace,
+					},
+					Spec: *ka.KustomizationSpec,
+				}
+				if err := r.reconcileKustomization(ctx, k, ka.Namespace); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// reconcileKustomization reconciles a Kustomization resource. The Kustomization resource is an external resource
+// that is managed by the kustomization-controller.
+func (r *Reconciler) reconcileKustomization(ctx context.Context, kustomization *kustomizev1.Kustomization, namespace string) error {
+	existing := &kustomizev1.Kustomization{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: kustomization.Name, Namespace: namespace}, existing)
+	if err != nil && apierrors.IsNotFound(err) {
+		// Create the Kustomization
+		log.Printf("Creating Kustomization %s/%s", kustomization.Namespace, kustomization.Name)
+		return r.Client.Create(ctx, kustomization)
+	} else if err != nil {
+		return err
+	}
+
+	return nil
+
+	// No need to update the kustomization. The kustomize-controller will take care of that.
+	// return r.Update(ctx, kustomization)
 }
 
 func (r *Reconciler) receiveJetStream(msg jetstream.Msg) {
@@ -147,4 +214,26 @@ func (r *Reconciler) getState(ctx context.Context) (State, error) {
 		}
 	}
 	return State{}, fmt.Errorf("state not found: %s", fsmState)
+}
+
+// checkForExitActions checks if the transitioning State has any Exit Actions to reconcile.
+func (r *Reconciler) checkForExitActions(ctx context.Context, state State) error {
+	if state.Exit.KubernetesActions != nil {
+		for _, ka := range state.Exit.KubernetesActions {
+			if ka.KustomizationSpec != nil {
+				k := &kustomizev1.Kustomization{
+					ObjectMeta: ctrl.ObjectMeta{
+						Name:      ka.Name,
+						Namespace: ka.Namespace,
+					},
+					Spec: *ka.KustomizationSpec,
+				}
+				log.Printf("Exiting State %s. Reconciling Kustomization %s/%s", state.Name, k.Namespace, k.Name)
+				if err := r.reconcileKustomization(ctx, k, ka.Namespace); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

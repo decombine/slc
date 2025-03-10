@@ -13,6 +13,7 @@ import (
 // ConnectionOptions holds options for configuring Contract Network connectivity.
 type ConnectionOptions struct {
 	JWT       []byte
+	Secret    string
 	JetStream jetstream.StreamConfig
 }
 
@@ -22,6 +23,12 @@ type ConnectionOption func(*ConnectionOptions)
 func WithToken(token string) ConnectionOption {
 	return func(opts *ConnectionOptions) {
 		opts.JWT = []byte(token)
+	}
+}
+
+func WithSecret(secret string) ConnectionOption {
+	return func(opts *ConnectionOptions) {
+		opts.Secret = secret
 	}
 }
 
@@ -39,7 +46,7 @@ func NewClient(ctx context.Context, network Network, opts ...ConnectionOption) (
 		opt(options)
 	}
 
-	scopes := []string{"openid", "profile", "email", "offline_access"}
+	scopes := []string{"openid", "profile", "urn:zitadel:iam:org:project:id:302355815371636742:aud"}
 
 	if options.JWT != nil {
 		ts, err := profile.NewJWTProfileTokenSourceFromKeyFileData(ctx, network.Issuer, options.JWT, scopes)
