@@ -64,7 +64,6 @@ func (r *Reconciler) ConsumeEvent(ctx context.Context, event *cloudevents.Event,
 	for _, t := range eligible {
 		if t.On == "" {
 			// No event to process
-			log.Printf("Event does not trigger a transition")
 			continue
 		}
 		if t.On == event.Type() {
@@ -86,8 +85,6 @@ func (r *Reconciler) ConsumeEvent(ctx context.Context, event *cloudevents.Event,
 
 				r.FSM.OnTransitioning()
 			}
-		} else {
-			log.Printf("Event %s does not trigger a transition", event.Type())
 		}
 	}
 	return nil
