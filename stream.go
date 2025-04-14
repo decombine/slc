@@ -28,6 +28,8 @@ func (c *Contract) Connect(ctx context.Context, streamCfg jetstream.StreamConfig
 }
 
 // formatConsumerName formats the name of the Contract to remove any special characters.
+//
+//nolint:unused
 func formatConsumerName(name, id string) string {
 	name = strings.ToUpper(name)
 
