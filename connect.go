@@ -46,7 +46,7 @@ func NewClient(ctx context.Context, network Network, opts ...ConnectionOption) (
 		opt(options)
 	}
 
-	scopes := []string{"openid", "profile", "urn:zitadel:iam:org:project:id:302355815371636742:aud"}
+	scopes := []string{"openid", "profile", `urn:zitadel:iam:org:project:id:` + network.ClientID + `:aud`}
 
 	if options.JWT != nil {
 		ts, err := profile.NewJWTProfileTokenSourceFromKeyFileData(ctx, network.Issuer, options.JWT, scopes)
