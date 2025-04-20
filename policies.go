@@ -125,14 +125,7 @@ func NewRegoPolicy(ctx context.Context, module, query string, policyContent []by
 			if variable.Name == "" || variable.Type == "" {
 				return nil, errors.New("variable name and type must be specified")
 			}
-			logger.Debug("Overriding policy variable: %s with value: %s", variable.Name, variable.Default)
-			content, err := overridePolicyValue(policyContent, "$"+variable.Name, variable.Default, logger)
-			if err != nil {
-				return nil, err
-			}
-			if len(content) == 0 {
-				//log.Printf("No changes made to policy for variable: %s", variable.Name)
-			}
+			content := overridePolicyValue(policyContent, "$"+variable.Name, variable.Default, logger)
 			modifiedPolicy = content
 		}
 	}
@@ -153,7 +146,7 @@ func NewRegoPolicy(ctx context.Context, module, query string, policyContent []by
 	return &compiled, nil
 }
 
-func overridePolicyValue(policyContent []byte, key, newValue string, logger *slog.Logger) ([]byte, error) {
+func overridePolicyValue(policyContent []byte, key, newValue string, logger *slog.Logger) []byte {
 	logger.Debug("Overriding Policy with variables", "original", string(policyContent), "target", key, "newValue", newValue)
 
 	// Replace the placeholder or specific value in the policy
@@ -165,5 +158,5 @@ func overridePolicyValue(policyContent []byte, key, newValue string, logger *slo
 		logger.Debug("Replacement successful", "key", key, "newValue", newValue)
 	}
 
-	return modifiedPolicy, nil
+	return modifiedPolicy
 }
