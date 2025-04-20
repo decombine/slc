@@ -1,14 +1,26 @@
 package slc
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 
 	gogithub "github.com/google/go-github/v69/github"
 	"github.com/open-policy-agent/opa/v1/rego"
 )
+
+type PolicyOptions struct {
+	Variables []Variables
+}
+
+func WithVars(variables []Variables) PolicyOptions {
+	return PolicyOptions{
+		Variables: variables,
+	}
+}
 
 // getPolicyDirectory downloads a directory of OPA Rego policy files from a GitHub repository.
 //
@@ -106,7 +118,21 @@ func NewRegoPolicyFS(ctx context.Context, module, query, path string) (*rego.Pre
 }
 
 // NewRegoPolicy prepares an OPA Rego policy for evaluation that can be used within Contract State Condition.
-func NewRegoPolicy(ctx context.Context, module, query string, policyContent []byte) (*rego.PreparedEvalQuery, error) {
+func NewRegoPolicy(ctx context.Context, module, query string, policyContent []byte, variables []Variables, logger *slog.Logger) (*rego.PreparedEvalQuery, error) {
+	var modifiedPolicy []byte
+	if len(variables) > 0 {
+		for _, variable := range variables {
+			if variable.Name == "" || variable.Type == "" {
+				return nil, errors.New("variable name and type must be specified")
+			}
+			content := overridePolicyValue(policyContent, "$"+variable.Name, variable.Default, logger)
+			modifiedPolicy = content
+		}
+	}
+	if len(modifiedPolicy) != 0 {
+		policyContent = modifiedPolicy
+	}
+
 	r := rego.New(
 		rego.Query(query),
 		rego.Module(module, string(policyContent)),
@@ -118,4 +144,19 @@ func NewRegoPolicy(ctx context.Context, module, query string, policyContent []by
 	}
 
 	return &compiled, nil
+}
+
+func overridePolicyValue(policyContent []byte, key, newValue string, logger *slog.Logger) []byte {
+	logger.Debug("Overriding Policy with variables", "original", string(policyContent), "target", key, "newValue", newValue)
+
+	// Replace the placeholder or specific value in the policy
+	modifiedPolicy := bytes.ReplaceAll(policyContent, []byte(key), []byte(newValue))
+
+	if !bytes.Contains(modifiedPolicy, []byte(newValue)) {
+		logger.Debug("Replacement failed. Key not found", "key", key, "newValue", newValue)
+	} else {
+		logger.Debug("Replacement successful", "key", key, "newValue", newValue)
+	}
+
+	return modifiedPolicy
 }

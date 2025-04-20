@@ -55,6 +55,15 @@ type ContractText struct {
 	URL string `json:"url" yaml:"url" toml:"url" validate:"required,url"`
 }
 
+type TextSource struct {
+	// Name of the TextSource. E.g., "agreement-markdown, services-contract.pdf, com.decombine.decision-slc"
+	Name string `json:"name" yaml:"name" toml:"name"`
+	// Kind of the TextSource is a string value representing the REST resource of the object. E.g., "concerto, markdown, pdf"
+	Kind string `json:"kind" yaml:"kind" toml:"kind"`
+	// SourceURL of the TextSource is a string value representing the URL/URI to the given resource.
+	SourceURL string `json:"sourceUrl" yaml:"sourceUrl" toml:"sourceUrl"`
+}
+
 // Condition is used to apply a Policy to a Smart Legal Contract State Transition.
 // A Policy may include Open Policy Agent (OPA) Rego logic.
 type Condition struct {
@@ -100,9 +109,22 @@ type State struct {
 	// The actions that are executed when the State is exited
 	Exit Action `json:"exit" yaml:"exit" toml:"exit"`
 	// The variables associated with the State
-	Variables map[string]any `json:"variables" yaml:"variables" toml:"variables"`
+	Variables []Variables `json:"variables" yaml:"variables" toml:"variables"`
 	// The transitions that are possible from this State
 	Transitions []Transition `json:"transitions" yaml:"transitions" toml:"transitions" validate:"required,gte=0,dive"`
+}
+
+type Variables struct {
+	// Name of the Variable
+	Name string `json:"name" yaml:"name" toml:"name"`
+	// The Type of the Variable (e.g., "string", "int", "bool")
+	Type string `json:"type" yaml:"type" toml:"type"`
+	// Default value of the Variable
+	Default string `json:"default" yaml:"default" toml:"default"`
+	// Ref is the reference to a specific source to populate the Variable
+	Ref string `json:"ref" yaml:"ref" toml:"ref"`
+	// Kind is a string value representing the REST resource of the object
+	Kind string `json:"kind" yaml:"kind" toml:"kind"`
 }
 
 // A StateConfiguration is a collection of States that define the State
@@ -151,13 +173,19 @@ type Status struct {
 	WorkloadState string `json:"workloadState,omitempty" yaml:"workloadState,omitempty" toml:"workloadState,omitempty"`
 }
 
+// TODO: Convert State Configuration errors to a custom Error type.
+
+var (
+	ErrStateNotFound = errors.New("state not found")
+)
+
 func (c *Contract) GetState(name string) (State, error) {
 	for _, s := range c.State.States {
 		if s.Name == name {
 			return s, nil
 		}
 	}
-	return State{}, errors.New("state not found")
+	return State{}, ErrStateNotFound
 }
 
 func (c *Contract) InsertState(s State) {
@@ -168,4 +196,49 @@ func New() Contract {
 	return Contract{
 		Version: Version,
 	}
+}
+
+// GetVariables returns the Variables for a given State. Variables can be
+// used to store values associated with State Configuration.
+func (c *Contract) GetVariables(state string) ([]Variables, error) {
+	for _, s := range c.State.States {
+		if s.Name == state {
+			return s.Variables, nil
+		}
+	}
+	return nil, ErrStateNotFound
+}
+
+// ParseConcertoPayload processes JSON dynamically to extract objects with a "$class" field.
+func ParseConcertoPayload(data interface{}) ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+
+	switch v := data.(type) {
+	case map[string]interface{}:
+		// Check if the map contains a "$class" field
+		if _, ok := v["$class"]; ok {
+			results = append(results, v)
+		}
+
+		// Recursively check nested objects
+		for _, value := range v {
+			nestedResults, err := ParseConcertoPayload(value)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, nestedResults...)
+		}
+
+	case []interface{}:
+		// Iterate through array elements
+		for _, item := range v {
+			nestedResults, err := ParseConcertoPayload(item)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, nestedResults...)
+		}
+	}
+
+	return results, nil
 }

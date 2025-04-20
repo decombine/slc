@@ -29,7 +29,7 @@ arguments = {}
 type = ""
 arguments = {}
 
-[state.states.variables]
+[[state.states.variables]]
 
 [[state.states.transitions]]
 name = "Signing"

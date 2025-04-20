@@ -21,7 +21,12 @@ state:
       exit:
         type: ""
         arguments: null
-      variables: null
+      variables:
+        - name: reviewerUniqueId
+          type: string
+          default: ""
+          ref: com.decombine.reviewer-slc.reviewer.id
+          kind: concerto
       transitions:
         - name: "Signing"
           to: "In Process"

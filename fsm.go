@@ -3,6 +3,7 @@ package slc
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 
 	"github.com/open-policy-agent/opa/v1/rego"
@@ -41,6 +42,7 @@ type FSMOption func(*FSMOptions)
 type FSMOptions struct {
 	GitHubPAT      string
 	FilesystemPath string
+	Logger         *slog.Logger
 }
 
 // WithGitHubToken is an FSMOption that changes the default behavior of the FSM to use a GitHub Personal Access Token
@@ -60,6 +62,13 @@ func WithFSPolicyFiles(path string) FSMOption {
 	}
 }
 
+// WithLogger is an FSMOption that allows the user to set a custom logger for the FSM.
+func WithLogger(logger *slog.Logger) FSMOption {
+	return func(opts *FSMOptions) {
+		opts.Logger = logger
+	}
+}
+
 // NewStateMachine initializes a Finite State Machine (FSM) for a given Smart Legal Contract. The FSM
 // is constructed based on the StateConfiguration of the Contract. The FSM is set to the current State
 // passed as an argument.
@@ -67,6 +76,12 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 	options := &FSMOptions{}
 	for _, opt := range opts {
 		opt(options)
+	}
+
+	// Use default logger if none provided
+	logger := options.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 
 	var queue []string
@@ -85,10 +100,12 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 	}
 
 	if !initialExists || !currentExists {
+		// TODO: Convert to custom error type.
 		return nil, errors.New("state configuration is invalid: initial or current state not found")
 	}
 
 	if len(queue) == 0 {
+		// TODO: Convert to custom error type.
 		return nil, errors.New("state configuration is invalid: no states found")
 	}
 
@@ -108,7 +125,6 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 				if states[t].Name != currentState {
 					continue
 				}
-
 				var guards []stateless.GuardFunc
 				for j := 0; j < len(states[t].Transitions[i].Conditions); j++ {
 
@@ -128,14 +144,27 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 						// TODO: This may have a large memory footprint; profiling should be done in various scenarios when feasible.
 						// TODO: Refactor this to a cleaner implementation.
 						if options.FilesystemPath != "" {
+
+							// Ensure the path ends with a trailing slash to avoid policy files not being found.
+							if options.FilesystemPath[len(options.FilesystemPath)-1:] != "/" {
+								options.FilesystemPath += "/"
+							}
+
 							policyContent, _ = os.ReadFile(options.FilesystemPath + states[t].Transitions[i].Conditions[j].Path)
 						} else if options.GitHubPAT != "" {
 							policyContent, _ = getPolicyFile(ctx, c.Policy.URL, c.Policy.Branch, options.GitHubPAT, states[t].Transitions[i].Conditions[j].Path)
 						} else {
 							policyContent, _ = getPolicyFile(ctx, c.Policy.URL, c.Policy.Branch, "", states[t].Transitions[i].Conditions[j].Path)
 						}
+						var vars []Variables
+						if states[t].Variables != nil {
+							retrieved, _ := c.GetVariables(states[t].Name)
+							vars = append(vars, retrieved...)
+						}
 
-						return regoCondition(*inner, states[t].Transitions[i].Conditions[j], policyContent)
+						logger.Debug("Policy file content", "path", states[t].Transitions[i].Conditions[j].Path, "content", string(policyContent))
+
+						return regoCondition(*inner, states[t].Transitions[i].Conditions[j], policyContent, vars, logger)
 					})
 				}
 
@@ -151,10 +180,10 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 	return tree, nil
 }
 
-func regoCondition(tCtx TransitionCtx, condition Condition, policyContent []byte) bool {
+func regoCondition(tCtx TransitionCtx, condition Condition, policyContent []byte, variables []Variables, logger *slog.Logger) bool {
 	ctx := context.Background()
 
-	policy, err := NewRegoPolicy(ctx, condition.Name, condition.Value, policyContent)
+	policy, err := NewRegoPolicy(ctx, condition.Name, condition.Value, policyContent, variables, logger)
 	if err != nil {
 		panic(err)
 	}

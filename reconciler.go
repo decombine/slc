@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
@@ -16,8 +17,10 @@ import (
 )
 
 type ReconcilerConfig struct {
-	Workers     int
-	MaxMassages int
+	LogLevel       slog.Level
+	PublishSubject string
+	Workers        int
+	MaxMassages    int
 }
 
 type Reconciler struct {
@@ -28,15 +31,23 @@ type Reconciler struct {
 	Contract     *Contract
 	FSM          *stateless.StateMachine
 	Client       client.Client
+	Logger       *slog.Logger
 }
 
 type ReconcilerOptions struct {
 	client client.Client
+	logger *slog.Logger
 }
 
 func WithKubernetesClient(client client.Client) ReconcilerOptions {
 	return ReconcilerOptions{
 		client: client,
+	}
+}
+
+func WithReconcilerLogger(logger *slog.Logger) ReconcilerOptions {
+	return ReconcilerOptions{
+		logger: logger,
 	}
 }
 
@@ -48,6 +59,17 @@ func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.
 	for _, o := range options {
 		if o.client != nil {
 			r.Client = o.client
+		}
+		if o.logger != nil {
+			r.Logger = o.logger
+		} else {
+			level := slog.LevelInfo
+			if config.LogLevel != 0 {
+				level = config.LogLevel
+			}
+			r.Logger = slog.New(slog.NewTextHandler(log.Writer(), &slog.HandlerOptions{
+				Level: level,
+			}))
 		}
 	}
 
@@ -62,13 +84,13 @@ func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.
 
 func (r *Reconciler) Start(ctx context.Context) error {
 	r.EventChannel = make(chan *cloudevents.Event)
-	log.Printf("Starting Decombine Smart Legal Contract Reconciler...\n")
+	r.Logger.Info("Starting Decombine Smart Legal Contract Reconciler...")
 	state, err := r.getState(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get current state: %w", err)
 	}
 
-	log.Printf("Current Contract State: %s\n", state.Name)
+	r.Logger.Info("Contract", "Contract", r.Contract.Name, "State", state.Name)
 
 	eligible, err := r.eligibleTransitions(ctx)
 	if err != nil {
@@ -76,7 +98,7 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	}
 
 	if r.Client != nil {
-		log.Printf("Smart Legal Contract connected to Kubernetes API. Synchronizing any Entry workloads.")
+		r.Logger.Info("Smart Legal Contract connected to Kubernetes API. Synchronizing any Entry workloads.")
 		err := r.reconcileAction(ctx, state.Entry)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile entry actions: %w", err)
@@ -88,32 +110,36 @@ func (r *Reconciler) Start(ctx context.Context) error {
 	r.FSM.OnTransitioning(func(context.Context, stateless.Transition) {
 		evt, err := r.Contract.CreateEvent("com.decombine.slc.transitioning", "decombine")
 		if err != nil {
-			log.Printf("Error creating transitioning event: %v", err)
+			r.Logger.Error("Error creating transitioning event", "error", err)
 			return
 		}
 		payload, _ := evt.MarshalJSON()
-		publish, err := r.Stream.Publish(ctx, "default", payload)
-		if err != nil {
-			log.Printf("Error publishing transitioning event: %v", err)
-			return
+		if r.Config.PublishSubject != "" {
+			publish, err := r.Stream.Publish(ctx, r.Config.PublishSubject, payload)
+			if err != nil {
+				r.Logger.Error("Error publishing transitioning event", "error", err)
+				return
+			}
+			r.Logger.Info("Published transitioning event", "publish", publish)
+		} else {
+			r.Logger.Info("No publish subject configured. Skipping publishing transitioning event.")
 		}
-		log.Printf("SLC published transitioning CloudEvent: %v", publish)
 	})
 
 	// Start a goroutine to spawn workers for incoming message processing
 	go func() {
 		err := r.run()
 		if err != nil {
-			log.Printf("Error running reconciler: %v", err)
+			r.Logger.Error("Error running reconciler", "error", err)
 		}
 	}()
 	for {
 		select {
 		case event := <-r.EventChannel:
-			log.Printf("Received event: %v at %s with Type %s", event.ID(), event.Time(), event.Type())
+			r.Logger.Info("Received event", "type", event.Type(), "source", event.Source(), "id", event.ID())
 			err := r.ConsumeEvent(ctx, event, eligible)
 			if err != nil {
-				log.Printf("Error consuming event: %v", err)
+				r.Logger.Error("Error processing event", "error", err)
 				return err
 			}
 		case <-ctx.Done():
@@ -166,13 +192,13 @@ func (r *Reconciler) reconcileAction(ctx context.Context, action Action) error {
 }
 
 // reconcileKustomization reconciles a Kustomization resource. The Kustomization resource is an external resource
-// that is managed by the kustomization-controller.
+// managed by the kustomization-controller.
 func (r *Reconciler) reconcileKustomization(ctx context.Context, kustomization *kustomizev1.Kustomization, namespace string) error {
 	existing := &kustomizev1.Kustomization{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: kustomization.Name, Namespace: namespace}, existing)
 	if err != nil && apierrors.IsNotFound(err) {
 		// Create the Kustomization
-		log.Printf("Creating Kustomization %s/%s", kustomization.Namespace, kustomization.Name)
+		r.Logger.Info("Creating Kustomization", "Kustomization", kustomization.Name, "Namespace", kustomization.Namespace)
 		return r.Client.Create(ctx, kustomization)
 	} else if err != nil {
 		return err
@@ -231,7 +257,7 @@ func (r *Reconciler) checkForExitActions(ctx context.Context, state State) error
 					},
 					Spec: *ka.KustomizationSpec,
 				}
-				log.Printf("Exiting State %s. Reconciling Kustomization %s/%s", state.Name, k.Namespace, k.Name)
+				r.Logger.Info("Exiting State", "State", state.Name, "Kustomization", k.Name, "Namespace", k.Namespace)
 				if err := r.reconcileKustomization(ctx, k, ka.Namespace); err != nil {
 					return err
 				}

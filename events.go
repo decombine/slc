@@ -99,6 +99,7 @@ func jetstreamToCloudEvent(m jetstream.Msg) (*cloudevents.Event, error) {
 		return ev, nil
 	}
 	if ev.Type() != "" {
+		// If the type is set, we can assume it's a CloudEvent
 		return ev, nil
 	}
 
