@@ -17,9 +17,10 @@ import (
 )
 
 type ReconcilerConfig struct {
-	LogLevel    slog.Level
-	Workers     int
-	MaxMassages int
+	LogLevel       slog.Level
+	PublishSubject string
+	Workers        int
+	MaxMassages    int
 }
 
 type Reconciler struct {
@@ -113,12 +114,16 @@ func (r *Reconciler) Start(ctx context.Context) error {
 			return
 		}
 		payload, _ := evt.MarshalJSON()
-		publish, err := r.Stream.Publish(ctx, "default", payload)
-		if err != nil {
-			r.Logger.Error("Error publishing transitioning event", "error", err)
-			return
+		if r.Config.PublishSubject != "" {
+			publish, err := r.Stream.Publish(ctx, r.Config.PublishSubject, payload)
+			if err != nil {
+				r.Logger.Error("Error publishing transitioning event", "error", err)
+				return
+			}
+			r.Logger.Info("Published transitioning event", "publish", publish)
+		} else {
+			r.Logger.Info("No publish subject configured. Skipping publishing transitioning event.")
 		}
-		r.Logger.Info("Published transitioning event", "publish", publish)
 	})
 
 	// Start a goroutine to spawn workers for incoming message processing
@@ -187,7 +192,7 @@ func (r *Reconciler) reconcileAction(ctx context.Context, action Action) error {
 }
 
 // reconcileKustomization reconciles a Kustomization resource. The Kustomization resource is an external resource
-// that is managed by the kustomization-controller.
+// managed by the kustomization-controller.
 func (r *Reconciler) reconcileKustomization(ctx context.Context, kustomization *kustomizev1.Kustomization, namespace string) error {
 	existing := &kustomizev1.Kustomization{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: kustomization.Name, Namespace: namespace}, existing)
