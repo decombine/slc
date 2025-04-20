@@ -28,10 +28,12 @@ type Reconciler struct {
 	Contract     *Contract
 	FSM          *stateless.StateMachine
 	Client       client.Client
+	//Logger       *slog.Logger
 }
 
 type ReconcilerOptions struct {
 	client client.Client
+	//logger *slog.Logger
 }
 
 func WithKubernetesClient(client client.Client) ReconcilerOptions {

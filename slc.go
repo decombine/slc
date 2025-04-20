@@ -55,6 +55,15 @@ type ContractText struct {
 	URL string `json:"url" yaml:"url" toml:"url" validate:"required,url"`
 }
 
+type TextSource struct {
+	// Name of the TextSource. E.g., "agreement-markdown, services-contract.pdf, com.decombine.decision-slc"
+	Name string `json:"name" yaml:"name" toml:"name"`
+	// Kind of the TextSource is a string value representing the REST resource of the object. E.g., "concerto, markdown, pdf"
+	Kind string `json:"kind" yaml:"kind" toml:"kind"`
+	// SourceURL of the TextSource is a string value representing the URL/URI to the given resource.
+	SourceURL string `json:"sourceUrl" yaml:"sourceUrl" toml:"sourceUrl"`
+}
+
 // Condition is used to apply a Policy to a Smart Legal Contract State Transition.
 // A Policy may include Open Policy Agent (OPA) Rego logic.
 type Condition struct {
