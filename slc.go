@@ -10,7 +10,7 @@ const (
 	Version = "0.1.0"
 )
 
-// Contract is the definition of for a Decombine SLC.
+// Contract is the definition of a Decombine SLC.
 type Contract struct {
 	// The unique identifier (UUID) of the SLC. Typically created by the Network managing the SLC.
 	ID string `json:"id,omitempty" yaml:"id,omitempty" toml:"id,omitempty"`
@@ -60,8 +60,8 @@ type TextSource struct {
 	Name string `json:"name" yaml:"name" toml:"name"`
 	// Kind of the TextSource is a string value representing the REST resource of the object. E.g., "concerto, markdown, pdf"
 	Kind string `json:"kind" yaml:"kind" toml:"kind"`
-	// SourceURL of the TextSource is a string value representing the URL/URI to the given resource.
-	SourceURL string `json:"sourceUrl" yaml:"sourceUrl" toml:"sourceUrl"`
+	// URL of the TextSource is a string value representing the URL/URI to the given resource.
+	URL string `json:"url" yaml:"url" toml:"url"`
 }
 
 // Condition is used to apply a Policy to a Smart Legal Contract State Transition.
@@ -99,8 +99,7 @@ type PolicySource struct {
 	URL string `json:"url" yaml:"url" toml:"url" validate:"required,url"`
 }
 
-// A State is a condition of being. It represents a snapshot of the current
-// condition of a Smart Legal Contract.
+// A State is a configured Status for a Decombine Smart Legal Contract based on UML State Machine.
 type State struct {
 	// The name of the State
 	Name string `json:"name" yaml:"name" toml:"name"`
