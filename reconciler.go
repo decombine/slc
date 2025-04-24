@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/cloudevents/sdk-go/v2/protocol/http"
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/qmuntal/stateless"
@@ -17,26 +18,35 @@ import (
 )
 
 type ReconcilerConfig struct {
-	LogLevel       slog.Level
+	// LogLevel is the log level for the Reconciler.
+	LogLevel slog.Level
+	// UseCloudEventReceiver indicates if the Reconciler should start a CloudEvents receiver.
+	// Can be combined with Reconciler.CloudEventOpts to configure the receiver.
+	UseCloudEventReceiver bool
+	// PublishSubject adds a Subject to Publish events to on the Stream.
 	PublishSubject string
-	Workers        int
-	MaxMassages    int
+	// Workers is the number of workers to spawn for processing messages.
+	Workers int
+	// MaxMassages is the maximum number of messages to process at once.
+	MaxMassages int
 }
 
 type Reconciler struct {
-	Config       ReconcilerConfig
-	EventChannel chan *cloudevents.Event
-	Consumer     jetstream.Consumer
-	Stream       jetstream.JetStream
-	Contract     *Contract
-	FSM          *stateless.StateMachine
-	Client       client.Client
-	Logger       *slog.Logger
+	Config         ReconcilerConfig
+	EventChannel   chan *cloudevents.Event
+	Consumer       jetstream.Consumer
+	Stream         jetstream.JetStream
+	Contract       *Contract
+	FSM            *stateless.StateMachine
+	Client         client.Client
+	CloudEventOpts []http.Option
+	Logger         *slog.Logger
 }
 
 type ReconcilerOptions struct {
-	client client.Client
-	logger *slog.Logger
+	client         client.Client
+	logger         *slog.Logger
+	cloudEventOpts []http.Option
 }
 
 func WithKubernetesClient(client client.Client) ReconcilerOptions {
@@ -51,6 +61,12 @@ func WithReconcilerLogger(logger *slog.Logger) ReconcilerOptions {
 	}
 }
 
+func WithCloudEventReceiverOpts(ceOpts ...http.Option) ReconcilerOptions {
+	return ReconcilerOptions{
+		cloudEventOpts: ceOpts,
+	}
+}
+
 func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.Consumer, stream jetstream.JetStream,
 	config ReconcilerConfig, options ...ReconcilerOptions) *Reconciler {
 
@@ -59,6 +75,10 @@ func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.
 	for _, o := range options {
 		if o.client != nil {
 			r.Client = o.client
+		}
+		if o.cloudEventOpts != nil {
+			r.Config.UseCloudEventReceiver = true
+			r.CloudEventOpts = o.cloudEventOpts
 		}
 		if o.logger != nil {
 			r.Logger = o.logger
@@ -153,6 +173,32 @@ func (r *Reconciler) run() error {
 	iter, _ := r.Consumer.Messages(jetstream.PullMaxMessages(r.Config.MaxMassages))
 	numWorkers := r.Config.Workers
 	sem := make(chan struct{}, numWorkers)
+	ctx := context.Background()
+
+	go func() {
+		if r.Config.UseCloudEventReceiver {
+			// Support flexible implementation if SLC operators prefer to customize their CloudEvent Receiver.
+			var (
+				cec cloudevents.Client
+				err error
+			)
+			if r.CloudEventOpts != nil {
+				cec, err = cloudevents.NewClientHTTP(r.CloudEventOpts...)
+			} else {
+				cec, err = cloudevents.NewClientHTTP()
+			}
+			if err != nil {
+				log.Fatalf("failed to create client, %v", err)
+			}
+
+			r.Logger.Debug("Cloud Event receiver being activated")
+
+			if err = cec.StartReceiver(ctx, r.receiveHttp); err != nil {
+				log.Fatalf("failed to start receiver: %v", err)
+			}
+		}
+	}()
+
 	for {
 		sem <- struct{}{}
 		go func() {
@@ -167,6 +213,7 @@ func (r *Reconciler) run() error {
 			r.receiveJetStream(msg)
 			_ = msg.Ack()
 		}()
+
 	}
 }
 
@@ -207,9 +254,16 @@ func (r *Reconciler) reconcileKustomization(ctx context.Context, kustomization *
 	return nil
 
 	// No need to update the kustomization. The kustomize-controller will take care of that.
-	// return r.Update(ctx, kustomization)
 }
 
+// receiveHttp is a callback function that receives CloudEvents from the CloudEvents Receiver.
+func (r *Reconciler) receiveHttp(ctx context.Context, ce cloudevents.Event) {
+	go func() {
+		r.EventChannel <- &ce
+	}()
+}
+
+// receiveJetStream is a callback function that receives messages from the JetStream Consumer.
 func (r *Reconciler) receiveJetStream(msg jetstream.Msg) {
 	go func() {
 		ce, err := jetstreamToCloudEvent(msg)
