@@ -20,7 +20,7 @@ SLC incorporates open source [Cloud Native Computing Foundation](https://www.cnc
 Using SLC, you can create transparent, repeatable, and predictable business workflows that are ready for the most complex or 
 demanding enterprise requirements.
 
-Learn more about Decombine SLC at [decombine.com](https://decombine.com).
+Learn more about Decombine at [decombine.com](https://decombine.com).
 
 ### Installation
 
