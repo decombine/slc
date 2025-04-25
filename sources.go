@@ -31,6 +31,8 @@ const (
 
 // GetArtifact retrieves an artifact from a remote repository. GetArtifact is not yet implemented while
 // the OCI design is being finalized. The function is a placeholder for future use.
+//
+//nolint:unused
 func getArtifact(repo *remote.Repository, url, artifactType string) ([]byte, error) {
 
 	switch artifactType {
@@ -43,6 +45,8 @@ func getArtifact(repo *remote.Repository, url, artifactType string) ([]byte, err
 }
 
 // getBlob retrieves a blob from a remote repository. See GetArtifact for more details.
+//
+//nolint:unused
 func getBlob(repo *remote.Repository, artifactType, artifactURL string) ([]byte, error) {
 	return nil, nil
 }
