@@ -1,14 +1,30 @@
-# Decombine SLC 
+# Decombine SLC
 [![License Apache 2][License-Image]][License-Url] [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
 
-Create Decombine Smart Legal Contracts (SLC) with the Go SDK.
+## Contracts for cloud-native business
+
+Create Decombine Smart Legal Contracts (SLC) with Go. Decombine SLC orchestrates and automates agreement and contractual 
+business logic as cloud-native workflows.
+
+SLC incorporates open source [Cloud Native Computing Foundation](https://www.cncf.io/) (CNCF) tooling such as:
+
+- [Kubernetes](https://kubernetes.io/) for workload execution
+- [NATS](https://nats.io/) for distributed event handling
+- [CloudEvents](https://cloudevents.io/) for event schema
+- [Flux](https://fluxcd.io/) for GitOps lifecycles and resourcing
+- [Open Policy Agent](https://www.openpolicyagent.org/) for state and policy enforcement
+
+Using SLC, you can create transparent, repeatable, and predictable business workflows that are ready for the most complex or 
+demanding enterprise requirements.
+
+Learn more about Decombine at [decombine.com](https://decombine.com).
 
 ### Installation
 
-`slc` can be installed with:
+The `slc` Go library can be installed with:
 
 ```bash
 go get "github.com/decombine/slc@latest"
@@ -20,9 +36,23 @@ The `contract` CLI can be installed with:
 go install "github.com/decombine/contract@latest"
 ```
 
+## Use Cases
+
+### Zero-trust infrastructure and services
+
+SLC can be declaratively defined using templates or directly in Go. The SLC definition is a blueprint of the 
+exact workloads that are triggered by the SLC and how. As long as the SLC definition is available, or the source code operating 
+the SLC, parties have programmatic proof of the system.
+
+### Complex, agentic multi-party business logic
+
+SLC provide structure and transparency around business logic in a vendor-agnostic way using a combination of industry-leading 
+open source tools. Furthermore, they can be networked with other SLC to form complex, zero-trust workflows which treat 
+services and agents as first-class consumers.
+
 ## Overview
 
-`slc` is an SDK to create Decombine Smart Legal Contracts (SLC). Decombine SLC are used to perform programmatic contractual
+`slc` is an SDK to create Decombine Smart Legal Contracts (SLC). Decombine SLC performs programmatic contractual
 execution in a standardized, templated, and declarative way. SLC are defined as a definition file that maps different
 states and events with software actions to be executed. SLC are designed to be used in a [GitOps](https://www.gitops.tech/) workflow.
 

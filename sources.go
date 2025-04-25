@@ -11,6 +11,7 @@ import (
 	"time"
 
 	gogithub "github.com/google/go-github/v69/github"
+	"oras.land/oras-go/v2/registry/remote"
 )
 
 const (
@@ -21,6 +22,34 @@ const (
 	// TOML is the TOML file format.
 	TOML = "toml"
 )
+
+// MediaTypes
+
+const (
+	MediaTypeConcertoDataV2 = "application/vnd.concerto.data.v2+json"
+)
+
+// GetArtifact retrieves an artifact from a remote repository. GetArtifact is not yet implemented while
+// the OCI design is being finalized. The function is a placeholder for future use.
+//
+//nolint:unused
+func getArtifact(repo *remote.Repository, url, artifactType string) ([]byte, error) {
+
+	switch artifactType {
+	case MediaTypeConcertoDataV2:
+		return getBlob(repo, MediaTypeConcertoDataV2, url)
+	default:
+		return nil, fmt.Errorf("unsupported artifact type: %s", artifactType)
+	}
+
+}
+
+// getBlob retrieves a blob from a remote repository. See GetArtifact for more details.
+//
+//nolint:unused
+func getBlob(repo *remote.Repository, artifactType, artifactURL string) ([]byte, error) {
+	return nil, nil
+}
 
 func GetFSContract(path string) (*Contract, error) {
 	f, err := os.Open(path)
