@@ -11,7 +11,12 @@ import (
 	"time"
 
 	gogithub "github.com/google/go-github/v69/github"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/content/file"
 	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
+	"oras.land/oras-go/v2/registry/remote/retry"
 )
 
 const (
@@ -26,29 +31,46 @@ const (
 // MediaTypes
 
 const (
-	MediaTypeConcertoDataV2 = "application/vnd.concerto.data.v2+json"
+	MediaTypeConcertoDataV2             = "application/vnd.concerto.data.v2+json"
+	MediaTypeDecombineTemplateSlcV2JSON = "application/vnd.decombine.template.slc.v1+json"
 )
 
-// GetArtifact retrieves an artifact from a remote repository. GetArtifact is not yet implemented while
-// the OCI design is being finalized. The function is a placeholder for future use.
-//
-//nolint:unused
-func getArtifact(repo *remote.Repository, url, artifactType string) ([]byte, error) {
-
-	switch artifactType {
-	case MediaTypeConcertoDataV2:
-		return getBlob(repo, MediaTypeConcertoDataV2, url)
-	default:
-		return nil, fmt.Errorf("unsupported artifact type: %s", artifactType)
-	}
-
+type RepoCredential struct {
+	Username     string
+	Password     string
+	RefreshToken string
+	AccessToken  string
 }
 
-// getBlob retrieves a blob from a remote repository. See GetArtifact for more details.
-//
-//nolint:unused
-func getBlob(repo *remote.Repository, artifactType, artifactURL string) ([]byte, error) {
-	return nil, nil
+type OCITarget struct {
+	Registry string
+	Repo     string
+	Tag      string
+}
+
+type ClientOpts struct {
+	// OCI is the target to pull the OCI artifact from.
+	OCI OCITarget
+	// OCICreds are the credentials to use for the OCI registry.
+	OCICreds RepoCredential
+	// OCIPullPath is the target to pull the OCI artifact to.
+	OCIPullPath string
+}
+
+func WithOCI(registry, repo, tag string) ClientOpts {
+	return ClientOpts{
+		OCI: OCITarget{
+			Registry: registry,
+			Repo:     repo,
+			Tag:      tag,
+		},
+	}
+}
+
+func WithOCICreds(credential RepoCredential) ClientOpts {
+	return ClientOpts{
+		OCICreds: credential,
+	}
 }
 
 func GetFSContract(path string) (*Contract, error) {
@@ -145,6 +167,83 @@ func getFileType(path string) string {
 	return ""
 }
 
+// TODO: This will be implemented in in an upcoming release to provide a single entry point for retrieving contracts.
+// func GetContract(opts ...ClientOpts) (*Contract, error) {
+//	ctx := context.Background()
+//
+//	var options ClientOpts
+//	for _, opt := range opts {
+//		if opt.OCI.Registry != "" {
+//			options.OCI = opt.OCI
+//		}
+//		if opt.OCICreds.Username != "" {
+//			options.OCICreds = opt.OCICreds
+//		}
+//	}
+//	return repo, nil
+// }
+
+func ociRepo(registry, repo string, opts ...ClientOpts) (*remote.Repository, error) {
+	var options ClientOpts
+	for _, opt := range opts {
+		if opt.OCICreds.Username != "" {
+			options.OCICreds = opt.OCICreds
+		}
+	}
+
+	r, err := remote.NewRepository(registry + "/" + repo)
+	if err != nil {
+		return nil, err
+	}
+
+	if options.OCICreds.Username != "" {
+		creds := reflectCreds(options.OCICreds)
+
+		r.Client = &auth.Client{
+			Client:     retry.DefaultClient,
+			Cache:      auth.NewCache(),
+			Credential: auth.StaticCredential(registry, creds),
+		}
+	}
+	return r, nil
+}
+
+// GetArtifact retrieves an artifact from a remote repository. GetArtifact is not yet implemented while
+// the OCI design is being finalized. The function is a placeholder for future use.
+//
+//nolint:unused
+func GetArtifact(ctx context.Context, target OCITarget, opts ...ClientOpts) (v1.Descriptor, error) {
+	path := "./oci"
+	for _, opt := range opts {
+		if opt.OCIPullPath != "" {
+			path = opt.OCIPullPath
+		}
+	}
+
+	fs, err := file.New(path)
+	if err != nil {
+		return v1.Descriptor{}, err
+	}
+	defer fs.Close()
+	repo, err := ociRepo(target.Registry, target.Repo, opts...)
+	if err != nil {
+		return v1.Descriptor{}, err
+	}
+	manifestDescriptor, err := oras.Copy(ctx, repo, target.Tag, fs, target.Tag, oras.DefaultCopyOptions)
+	if err != nil {
+		return v1.Descriptor{}, err
+	}
+	return manifestDescriptor, nil
+
+}
+
+// getBlob retrieves a blob from a remote repository. See GetArtifact for more details.
+//
+//nolint:unused
+func getBlob(repo *remote.Repository, artifactType, artifactURL string) ([]byte, error) {
+	return nil, nil
+}
+
 func parseGitHubURL(gitHubURL string) (string, string, error) {
 	parsedURL, err := url.Parse(gitHubURL)
 	if err != nil {
@@ -158,4 +257,15 @@ func parseGitHubURL(gitHubURL string) (string, string, error) {
 	}
 
 	return parts[0], parts[1], nil
+}
+
+// Reflects credentials to the OCI client authentication struct.
+// This avoids client libraries needing to directly use the ORAS creds.
+func reflectCreds(creds RepoCredential) auth.Credential {
+	return auth.Credential{
+		Username:     creds.Username,
+		Password:     creds.Password,
+		RefreshToken: creds.RefreshToken,
+		AccessToken:  creds.AccessToken,
+	}
 }
