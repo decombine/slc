@@ -167,7 +167,8 @@ func getFileType(path string) string {
 	return ""
 }
 
-//func GetContract(opts ...ClientOpts) (*Contract, error) {
+// TODO: This will be implemented in in an upcoming release to provide a single entry point for retrieving contracts.
+// func GetContract(opts ...ClientOpts) (*Contract, error) {
 //	ctx := context.Background()
 //
 //	var options ClientOpts
@@ -180,7 +181,7 @@ func getFileType(path string) string {
 //		}
 //	}
 //	return repo, nil
-//}
+// }
 
 func ociRepo(registry, repo string, opts ...ClientOpts) (*remote.Repository, error) {
 	var options ClientOpts
