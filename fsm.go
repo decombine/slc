@@ -89,15 +89,7 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 	tree := stateless.NewStateMachine(current)
 
 	// Queue the states and validate the initial and current states exist.
-	for i := 0; i < len(c.State.States); i++ {
-		queue = append(queue, c.State.States[i].Name)
-		if c.State.States[i].Name == c.State.Initial {
-			initialExists = true
-		}
-		if c.State.States[i].Name == current {
-			currentExists = true
-		}
-	}
+	queueStates(c.State.States, &queue, c.State.Initial, current, &initialExists, &currentExists)
 
 	if !initialExists || !currentExists {
 		// TODO: Convert to custom error type.
@@ -110,6 +102,11 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 	}
 
 	visited := make(map[string]bool)
+	// Create a map to store all states (including substates)
+	stateMap := make(map[string]State)
+	// Create a map to store parent states for substates
+	parentMap := make(map[string]string)
+	buildStateMap(c.State.States, stateMap, parentMap)
 
 	for len(queue) > 0 {
 		currentState := queue[0]
@@ -118,66 +115,119 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 			continue
 		}
 		visited[currentState] = true
-		states := c.State.States
-		for t := range states {
 
-			for i := 0; i < len(states[t].Transitions); i++ {
-				if states[t].Name != currentState {
-					continue
-				}
-				var guards []stateless.GuardFunc
-				for j := 0; j < len(states[t].Transitions[i].Conditions); j++ {
-
-					// If there are no conditions, the transition is always valid.
-					// Otherwise, we construct Guard Conditions for the FSM.
-					guards = append(guards, func(ctx context.Context, _ ...any) bool {
-						inner, ok := FromContext(ctx)
-						if !ok {
-							inner = &TransitionCtx{Input: ""}
-						}
-						var policyContent []byte
-
-						// Retrieve any policy files that will be required for the FSM to evaluate transitions.
-						// For now, these are loaded into memory. This is also being done in a loop, which is not ideal,
-						// but it simplifies the scenario for now. This should be refactored to load the policy files
-						// earlier in the function, but that will then require a mapping between policy files and conditions.
-						// TODO: This may have a large memory footprint; profiling should be done in various scenarios when feasible.
-						// TODO: Refactor this to a cleaner implementation.
-						if options.FilesystemPath != "" {
-
-							// Ensure the path ends with a trailing slash to avoid policy files not being found.
-							if options.FilesystemPath[len(options.FilesystemPath)-1:] != "/" {
-								options.FilesystemPath += "/"
-							}
-
-							policyContent, _ = os.ReadFile(options.FilesystemPath + states[t].Transitions[i].Conditions[j].Path)
-						} else if options.GitHubPAT != "" {
-							policyContent, _ = getPolicyFile(ctx, c.Policy.URL, c.Policy.Branch, options.GitHubPAT, states[t].Transitions[i].Conditions[j].Path)
-						} else {
-							policyContent, _ = getPolicyFile(ctx, c.Policy.URL, c.Policy.Branch, "", states[t].Transitions[i].Conditions[j].Path)
-						}
-						var vars []Variables
-						if states[t].Variables != nil {
-							retrieved, _ := c.GetVariables(states[t].Name)
-							vars = append(vars, retrieved...)
-						}
-
-						logger.Debug("Policy file content", "path", states[t].Transitions[i].Conditions[j].Path, "content", string(policyContent))
-
-						return regoCondition(*inner, states[t].Transitions[i].Conditions[j], policyContent, vars, logger)
-					})
-				}
-
-				tree.Configure(currentState).Permit(states[t].Transitions[i].On, states[t].Transitions[i].To, guards...)
-				if !visited[states[t].Name] {
-					queue = append(queue, states[t].Name)
-				}
-			}
-
+		// Find the state in the map
+		if state, exists := stateMap[currentState]; exists {
+			// Process transitions for this state
+			processStateTransitions(ctx, tree, state, stateMap, visited, &queue, options, c, logger, parentMap)
 		}
 	}
 
 	return tree, nil
+}
+
+// queueStates adds all states and their substates to the queue
+// and checks if the initial and current states exist
+func queueStates(states []State, queue *[]string, initial string, current string, initialExists *bool, currentExists *bool) {
+	for _, state := range states {
+		*queue = append(*queue, state.Name)
+		if state.Name == initial {
+			*initialExists = true
+		}
+		if state.Name == current {
+			*currentExists = true
+		}
+
+		// Recursively process substates
+		if len(state.Substates) > 0 {
+			queueStates(state.Substates, queue, initial, current, initialExists, currentExists)
+		}
+	}
+}
+
+// buildStateMap creates maps of all states (including substates) for lookup.
+func buildStateMap(states []State, stateMap map[string]State, parentMap map[string]string) {
+	for _, state := range states {
+		stateMap[state.Name] = state
+
+		// Recursively process substates and set parent
+		if len(state.Substates) > 0 {
+			for _, substate := range state.Substates {
+				parentMap[substate.Name] = state.Name
+			}
+			buildStateMap(state.Substates, stateMap, parentMap)
+		}
+	}
+}
+
+// processStateTransitions processes transitions for a state and adds them to the FSM.
+func processStateTransitions(ctx context.Context, tree *stateless.StateMachine, state State, stateMap map[string]State,
+	visited map[string]bool, queue *[]string, options *FSMOptions, c *Contract, logger *slog.Logger, parentMap map[string]string) {
+
+	// Process transitions for this state
+	for i := 0; i < len(state.Transitions); i++ {
+		var guards []stateless.GuardFunc
+		transition := state.Transitions[i] // Create a local copy to avoid closure issues
+
+		for j := 0; j < len(transition.Conditions); j++ {
+			// Create local copies of loop variables to avoid closure issues
+			condition := transition.Conditions[j]
+
+			// If there are no conditions, the transition is always valid.
+			// Otherwise, we construct Guard Conditions for the FSM.
+			guards = append(guards, func(ctx context.Context, _ ...any) bool {
+				inner, ok := FromContext(ctx)
+				if !ok {
+					inner = &TransitionCtx{Input: ""}
+				}
+				var policyContent []byte
+
+				// Retrieve any policy files that will be required for the FSM to evaluate transitions.
+				if options.FilesystemPath != "" {
+					// Ensure the path ends with a trailing slash to avoid policy files not being found.
+					if options.FilesystemPath[len(options.FilesystemPath)-1:] != "/" {
+						options.FilesystemPath += "/"
+					}
+
+					policyContent, _ = os.ReadFile(options.FilesystemPath + condition.Path)
+				} else if options.GitHubPAT != "" {
+					policyContent, _ = getPolicyFile(ctx, c.Policy.URL, c.Policy.Branch, options.GitHubPAT, condition.Path)
+				} else {
+					policyContent, _ = getPolicyFile(ctx, c.Policy.URL, c.Policy.Branch, "", condition.Path)
+				}
+
+				var vars []Variables
+				if state.Variables != nil {
+					vars = append(vars, state.Variables...)
+				}
+
+				logger.Debug("Policy file content", "path", condition.Path, "content", string(policyContent))
+
+				return regoCondition(*inner, condition, policyContent, vars, logger)
+			})
+		}
+
+		// Check if the state is a substate
+		if parentState, isSubstate := parentMap[state.Name]; isSubstate {
+			// If it's a substate, use SubstateOf
+			tree.Configure(state.Name).SubstateOf(parentState).Permit(transition.On, transition.To, guards...)
+		} else {
+			// Otherwise, configure normally
+			tree.Configure(state.Name).Permit(transition.On, transition.To, guards...)
+		}
+
+		// Add destination state to queue if not visited
+		if !visited[transition.To] {
+			*queue = append(*queue, transition.To)
+		}
+	}
+
+	// Process substates
+	for _, substate := range state.Substates {
+		if !visited[substate.Name] {
+			*queue = append(*queue, substate.Name)
+		}
+	}
 }
 
 func regoCondition(tCtx TransitionCtx, condition Condition, policyContent []byte, variables []Variables, logger *slog.Logger) bool {

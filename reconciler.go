@@ -2,6 +2,7 @@ package slc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -31,6 +32,9 @@ type ReconcilerConfig struct {
 	MaxMassages int
 }
 
+// ActionHandlerFactory is a function that creates an ActionHandler from raw JSON data
+type ActionHandlerFactory func(data json.RawMessage) (ActionHandler, error)
+
 type Reconciler struct {
 	Config         ReconcilerConfig
 	EventChannel   chan *cloudevents.Event
@@ -41,6 +45,7 @@ type Reconciler struct {
 	Client         client.Client
 	CloudEventOpts []http.Option
 	Logger         *slog.Logger
+	actionHandlers map[string]ActionHandlerFactory
 }
 
 type ReconcilerOptions struct {
@@ -99,7 +104,38 @@ func NewReconciler(c *Contract, fsm *stateless.StateMachine, consumer jetstream.
 	r.Stream = stream
 	r.Config = config
 
+	// Initialize action handlers map
+	r.actionHandlers = make(map[string]ActionHandlerFactory)
+
+	// Register default action handlers
+	r.RegisterActionHandler("kubernetes", func(data json.RawMessage) (ActionHandler, error) {
+		var k KubernetesActionHandler
+		if err := json.Unmarshal(data, &k); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal kubernetes action: %w", err)
+		}
+		return &k, nil
+	})
+
+	r.RegisterActionHandler("contract", func(data json.RawMessage) (ActionHandler, error) {
+		var c ContractActionHandler
+		if err := json.Unmarshal(data, &c); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal contract action: %w", err)
+		}
+		return &c, nil
+	})
+
 	return &r
+}
+
+// RegisterActionHandler registers a new action handler for the given action type
+func (r *Reconciler) RegisterActionHandler(actionType string, factory ActionHandlerFactory) {
+	r.actionHandlers[actionType] = factory
+}
+
+// GetActionHandler returns the action handler factory for the given action type
+func (r *Reconciler) GetActionHandler(actionType string) (ActionHandlerFactory, bool) {
+	factory, ok := r.actionHandlers[actionType]
+	return factory, ok
 }
 
 func (r *Reconciler) Start(ctx context.Context) error {
@@ -217,8 +253,71 @@ func (r *Reconciler) run() error {
 	}
 }
 
-// runAction executes an Action triggered by a State Entry or Exit.
+// reconcileAction executes an Action triggered by a State Entry or Exit.
 func (r *Reconciler) reconcileAction(ctx context.Context, action Action) error {
+	// Handle actions from the Actions map
+	if action.Actions != nil && len(action.Actions) > 0 {
+		for actionType, actionData := range action.Actions {
+			// Get the registered handler factory for this action type
+			factory, ok := r.GetActionHandler(actionType)
+			if !ok {
+				r.Logger.Warn("No handler registered for action type", "type", actionType)
+				continue
+			}
+
+			// Create the handler
+			handler, err := factory(actionData)
+			if err != nil {
+				return fmt.Errorf("failed to create handler for action type %s: %w", actionType, err)
+			}
+
+			// Handle specific action types
+			switch actionType {
+			case "kubernetes":
+				// Cast to KubernetesActionHandler to access the Actions field
+				k, ok := handler.(*KubernetesActionHandler)
+				if !ok {
+					return fmt.Errorf("handler for action type %s is not a KubernetesActionHandler", actionType)
+				}
+
+				// Process Kubernetes actions
+				for _, ka := range k.Actions {
+					if ka.KustomizationSpec != nil {
+						k := &kustomizev1.Kustomization{
+							ObjectMeta: ctrl.ObjectMeta{
+								Name:      ka.Name,
+								Namespace: ka.Namespace,
+							},
+							Spec: *ka.KustomizationSpec,
+						}
+						if err := r.reconcileKustomization(ctx, k, ka.Namespace); err != nil {
+							return err
+						}
+					}
+				}
+
+			case "contract":
+				// Cast to ContractActionHandler to access the Actions field
+				c, ok := handler.(*ContractActionHandler)
+				if !ok {
+					return fmt.Errorf("handler for action type %s is not a ContractActionHandler", actionType)
+				}
+
+				// Process Contract actions
+				// Currently a placeholder - implement contract action handling here
+				r.Logger.Info("Contract action handler", "actions", len(c.Actions))
+
+			default:
+				// For other action types, just call Execute
+				// This allows for custom action types to be added without modifying this method
+				if err := handler.Execute(ctx); err != nil {
+					return fmt.Errorf("failed to execute action type %s: %w", actionType, err)
+				}
+			}
+		}
+	}
+
+	// For backward compatibility, handle KubernetesActions directly
 	if action.KubernetesActions != nil {
 		for _, ka := range action.KubernetesActions {
 			if ka.KustomizationSpec != nil {
@@ -235,6 +334,7 @@ func (r *Reconciler) reconcileAction(ctx context.Context, action Action) error {
 			}
 		}
 	}
+
 	return nil
 }
 

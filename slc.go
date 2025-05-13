@@ -1,6 +1,8 @@
 package slc
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
@@ -107,6 +109,8 @@ type State struct {
 	Entry Action `json:"entry" yaml:"entry" toml:"entry"`
 	// The actions that are executed when the State is exited
 	Exit Action `json:"exit" yaml:"exit" toml:"exit"`
+	// Hierarchically nested States
+	Substates []State `json:"substates" yaml:"substates" toml:"substates"`
 	// The variables associated with the State
 	Variables []Variables `json:"variables" yaml:"variables" toml:"variables"`
 	// The transitions that are possible from this State
@@ -137,9 +141,55 @@ type StateConfiguration struct {
 	States []State `json:"states" yaml:"states" toml:"states" validate:"required,gte=1,dive"`
 }
 
+// ActionHandler is an interface that all action types must implement
+// To add a new action type:
+// 1. Create a new struct that implements this interface
+// 2. Register the action type with the Reconciler using RegisterActionHandler
+// 3. Add the action to the Actions map in the Action struct with the registered type as the key
+//
+// Example:
+//
+//	// Define a new action handler
+//	type EmailActionHandler struct {
+//		Actions []EmailAction `json:"actions"`
+//	}
+//
+//	// Implement the ActionHandler interface
+//	func (h *EmailActionHandler) Execute(ctx context.Context) error {
+//		// Implementation goes here
+//		return nil
+//	}
+//
+//	// Register the action handler with the Reconciler
+//	reconciler.RegisterActionHandler("email", func(data json.RawMessage) (ActionHandler, error) {
+//		var e EmailActionHandler
+//		if err := json.Unmarshal(data, &e); err != nil {
+//			return nil, err
+//		}
+//		return &e, nil
+//	})
+//
+//	// Use the action in a State
+//	state := State{
+//		Name: "active",
+//		Entry: Action{
+//			ActionType: "email",
+//			Actions: map[string]json.RawMessage{
+//				"email": json.RawMessage(`{"actions":[{"to":"user@example.com","subject":"Welcome"}]}`),
+//			},
+//		},
+//	}
+type ActionHandler interface {
+	// Execute performs the action
+	Execute(ctx context.Context) error
+}
+
 type Action struct {
 	// The type of the action
-	ActionType        string             `json:"actionType,omitempty" yaml:"actionType" toml:"actionType"`
+	ActionType string `json:"actionType,omitempty" yaml:"actionType" toml:"actionType"`
+	// Actions is a map of action type to action implementation
+	Actions map[string]json.RawMessage `json:"actions,omitempty" yaml:"actions" toml:"actions"`
+	// KubernetesActions is kept for backward compatibility
 	KubernetesActions []KubernetesAction `json:"kubernetesAction,omitempty" yaml:"kubernetesAction" toml:"kubernetesAction"`
 }
 
@@ -147,6 +197,41 @@ type KubernetesAction struct {
 	Name              string                         `json:"name,omitempty"`
 	Namespace         string                         `json:"namespace,omitempty"`
 	KustomizationSpec *kustomizev1.KustomizationSpec `json:"kustomizationSpec,omitempty" yaml:"kustomizationSpec" toml:"kustomizationSpec"`
+}
+
+// KubernetesActionHandler implements the ActionHandler interface for Kubernetes actions
+type KubernetesActionHandler struct {
+	Actions []KubernetesAction `json:"actions"`
+}
+
+// Execute implements the ActionHandler interface
+// Note: This is a placeholder implementation. The actual execution is handled by the reconciler
+// which has access to the Kubernetes client.
+func (h *KubernetesActionHandler) Execute(ctx context.Context) error {
+	// The actual implementation is in the reconciler
+	return nil
+}
+
+type ContractAction struct {
+	// The Name of the Contract Action
+	Name string `json:"name,omitempty" yaml:"name,omitempty" toml:"name,omitempty"`
+	// The unique URL/URI Address of the Contract
+	Address string `json:"address,omitempty" yaml:"address,omitempty" toml:"address,omitempty"`
+	// The data payload of the Contract Action
+	Payload []byte `json:"payload,omitempty" yaml:"payload,omitempty" toml:"payload,omitempty"`
+}
+
+// ContractActionHandler implements the ActionHandler interface for Contract actions
+type ContractActionHandler struct {
+	Actions []ContractAction `json:"actions"`
+}
+
+// Execute implements the ActionHandler interface
+// Note: This is a placeholder implementation. The actual execution is handled by the reconciler
+// which has access to the necessary clients and services.
+func (h *ContractActionHandler) Execute(ctx context.Context) error {
+	// The actual implementation is in the reconciler
+	return nil
 }
 
 // Transition is a change from one State to another.
