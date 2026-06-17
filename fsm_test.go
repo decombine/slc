@@ -21,12 +21,15 @@ type fsmEvent struct {
 	shouldErr bool
 }
 
+const minimalOkFilePath = "./tests/minimal_ok.yaml"
+const draftState = "Draft"
+
 func TestNewStateMachine(t *testing.T) {
 	tests := []fsmtest{
 		{
 			name:      "Test NewStateMachine",
-			contract:  "./tests/minimal_ok.yaml",
-			state:     "Draft",
+			contract:  minimalOkFilePath,
+			state:     draftState,
 			options:   []FSMOption{},
 			shouldErr: false,
 		},
@@ -39,8 +42,8 @@ func TestNewStateMachine(t *testing.T) {
 		},
 		{
 			name:     "Test NewStateMachine with option",
-			contract: "./tests/minimal_ok.yaml",
-			state:    "Draft",
+			contract: minimalOkFilePath,
+			state:    draftState,
 			options: []FSMOption{
 				WithFSPolicyFiles("./tests/policies"),
 			},
@@ -77,27 +80,28 @@ func TestNewStateMachine(t *testing.T) {
 }
 
 func TestStateMachineTransitions(t *testing.T) {
+	const signEvent = "com.decombine.signature.sign"
 	tests := []fsmtest{
 		{
 			name:     "Test NewStateMachine with state transitions",
-			contract: "./tests/minimal_ok.yaml",
-			state:    "Draft",
+			contract: minimalOkFilePath,
+			state:    draftState,
 			options: []FSMOption{
 				WithFSPolicyFiles("./tests/policies/"),
 			},
 			events: []fsmEvent{
 				{
-					name:      "com.decombine.signature.sign",
+					name:      signEvent,
 					payload:   map[string]interface{}{"user": "bob"},
 					shouldErr: true,
 				},
 				{
-					name:      "com.decombine.signature.sign",
+					name:      signEvent,
 					payload:   nil,
 					shouldErr: true,
 				},
 				{
-					name:      "com.decombine.signature.sign",
+					name:      signEvent,
 					payload:   map[string]interface{}{"user": "admin"},
 					shouldErr: false,
 				},

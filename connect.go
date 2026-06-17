@@ -49,6 +49,7 @@ func NewClient(ctx context.Context, network Network, opts ...ConnectionOption) (
 	scopes := []string{"openid", "profile", `urn:zitadel:iam:org:project:id:` + network.ClientID + `:aud`}
 
 	if options.JWT != nil {
+		//nolint:staticcheck // NewJWTProfileTokenSourceFromKeyFileData is deprecated, but we need it for now to support JWT authentication.
 		ts, err := profile.NewJWTProfileTokenSourceFromKeyFileData(ctx, network.Issuer, options.JWT, scopes)
 		if err != nil {
 			return nil, err
