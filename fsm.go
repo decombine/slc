@@ -85,7 +85,7 @@ func NewStateMachine(ctx context.Context, current string, c *Contract, opts ...F
 	}
 
 	var queue []string
-	var initialExists, currentExists bool = false, false
+	var initialExists, currentExists = false, false
 	tree := stateless.NewStateMachine(current)
 
 	// Queue the states and validate the initial and current states exist.
