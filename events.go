@@ -103,14 +103,12 @@ func jetstreamToCloudEvent(m jetstream.Msg) (*cloudevents.Event, error) {
 		return ev, nil
 	}
 
-	// TODO: Review specification for options around encoding. Update handling appropriately.
 	newEv := cloudevents.NewEvent()
 	err = newEv.SetData(cloudevents.ApplicationJSON, m.Data())
 	if err != nil {
 		return nil, fmt.Errorf("failed to set cloudevent payload from JetStream message")
 	}
 
-	// TODO: Clarify time format in specification.
 	t, err := time.Parse(time.RFC3339, m.Headers().Get("time"))
 	if err != nil {
 		if StrictHeaders {
