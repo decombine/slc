@@ -6,8 +6,8 @@ on:
 
 jobs:
   lint:
-    name: Run on Fedora
-    runs-on: [self-hosted, linux, x64, rapid]
+    name: Run on ARC
+    runs-on: decombine-arc-public
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
